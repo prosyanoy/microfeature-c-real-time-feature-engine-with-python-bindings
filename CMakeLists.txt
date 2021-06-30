@@ -1,0 +1,78 @@
+cmake_minimum_required(VERSION 3.20)
+project(microfeature VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+option(MF_BUILD_TESTS "Build GoogleTest suites" ON)
+option(MF_BUILD_BENCH "Build Google Benchmark binaries" ON)
+option(MF_BUILD_PYTHON "Build the pybind11 module" ON)
+set(MF_SANITIZER "" CACHE STRING "Sanitizer to enable: address, thread, undefined or empty")
+
+include(FetchContent)
+
+add_library(microfeature_core STATIC src/engine.cpp)
+target_include_directories(microfeature_core PUBLIC include)
+find_package(Threads REQUIRED)
+target_link_libraries(microfeature_core PUBLIC Threads::Threads)
+target_compile_options(microfeature_core PRIVATE -Wall -Wextra -Wpedantic)
+
+if(MF_SANITIZER)
+  set(_san -fsanitize=${MF_SANITIZER} -fno-omit-frame-pointer -g)
+  if(MF_SANITIZER STREQUAL "address")
+    list(APPEND _san -fsanitize=undefined)
+  endif()
+  target_compile_options(microfeature_core PUBLIC ${_san})
+  target_link_options(microfeature_core PUBLIC ${_san})
+  # Sanitized runtimes cannot be dlopen()ed into an unsanitized Python.
+  set(MF_BUILD_PYTHON OFF)
+endif()
+
+if(MF_BUILD_TESTS)
+  enable_testing()
+  find_package(GTest QUIET)
+  if(NOT GTest_FOUND)
+    FetchContent_Declare(googletest
+      GIT_REPOSITORY https://github.com/google/googletest.git GIT_TAG v1.15.2)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+  endif()
+  include(GoogleTest)
+  add_executable(microfeature_tests
+    tests/cpp/ring_buffer_test.cpp tests/cpp/engine_test.cpp tests/cpp/concurrency_test.cpp)
+  target_link_libraries(microfeature_tests PRIVATE microfeature_core GTest::gtest_main)
+  gtest_discover_tests(microfeature_tests DISCOVERY_TIMEOUT 60)
+endif()
+
+if(MF_BUILD_BENCH)
+  find_package(benchmark QUIET)
+  if(NOT benchmark_FOUND)
+    FetchContent_Declare(googlebenchmark
+      GIT_REPOSITORY https://github.com/google/benchmark.git GIT_TAG v1.9.1)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googlebenchmark)
+  endif()
+  add_executable(microfeature_bench bench/bench_engine.cpp)
+  target_link_libraries(microfeature_bench PRIVATE microfeature_core benchmark::benchmark)
+endif()
+
+if(MF_BUILD_PYTHON)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    FetchContent_Declare(pybind11
+      GIT_REPOSITORY https://github.com/pybind/pybind11.git GIT_TAG v3.0.1)
+    FetchContent_MakeAvailable(pybind11)
+  endif()
+  pybind11_add_module(microfeature bindings/module.cpp)
+  target_link_libraries(microfeature PRIVATE microfeature_core)
+  set_target_properties(microfeature PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python)
+endif()

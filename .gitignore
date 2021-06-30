@@ -1,0 +1,26 @@
+# build output
+build/
+build-*/
+cmake-build-*/
+*.so
+*.o
+*.a
+compile_commands.json
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+# env and results
+.env
+.env.*
+!.env.example
+benchmarks/results/
+perf.data*
+*.svg
+# editors / OS
+.idea/
+.vscode/
+.DS_Store

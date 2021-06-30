@@ -1,0 +1,6 @@
+build
+.venv
+build-*
+.git
+__pycache__
+.env
